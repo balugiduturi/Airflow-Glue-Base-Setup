@@ -1,0 +1,14 @@
+order_id,customer_id,customer_name,product_category,product_name,quantity,unit_price,total_amount,order_status,order_timestamp
+ORD-10001,CUST-001,john doe,Electronics,Wireless Noise-Canceling Headphones,1,149.99,149.99,COMPLETED,2026-03-01 10:14:23
+ORD-10002,CUST-002,alice smith,Home & Kitchen,Stainless Steel French Press,2,24.50,49.00,COMPLETED,2026-03-01 11:05:12
+ORD-10003,CUST-003,bob johnson,books,Data Engineering with Apache Spark,1,45.00,45.00,CANCELLED,2026-03-01 11:32:45
+ORD-10004,CUST-004,clara oswald,Clothing,Waterproof Trail Running Shoes,1,120.00,120.00,COMPLETED,2026-03-01 12:15:30
+ORD-10005,CUST-005,david tennant,Electronics,4K Ultra HD Gaming Monitor,1,329.99,329.99,PENDING,2026-03-01 13:40:19
+ORD-10006,CUST-001,john doe,home & kitchen,Smart Wifi Electric Kettle,1,59.95,59.95,COMPLETED,2026-03-01 14:02:10
+ORD-10007,CUST-006,matt smith,Electronics,Mechanical RGB Keyboard,2,85.50,171.00,COMPLETED,2026-03-01 15:22:04
+ORD-10008,CUST-007,peter capaldi,Books,Designing Data-Intensive Applications,3,40.00,120.00,COMPLETED,2026-03-01 16:11:58
+ORD-10009,CUST-008,jodie whittaker,clothing,Merino Wool Hiking Socks (3-Pack),4,18.75,75.00,CANCELLED,2026-03-01 17:04:41
+ORD-10010,CUST-009,ncuti gatwa,Electronics,Portable External SSD 1TB,2,110.00,220.00,COMPLETED,2026-03-01 17:45:12
+ORD-10011,CUST-010,rose tyler,Beauty,Organic Hydrating Facial Cream,2,32.00,64.00,COMPLETED,2026-03-01 18:30:00
+ORD-10012,CUST-003,bob johnson,electronics,USB-C Fast Charging Hub,3,25.00,75.00,COMPLETED,2026-03-01 19:10:45
+

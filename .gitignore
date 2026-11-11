@@ -1,0 +1,98 @@
+# ==============================================================================
+# Git Ignore Rules for AWS Data Engineering Boilerplate
+# ==============================================================================
+
+# Secrets and Environment Variables
+.env
+.env.*
+!.env.example
+config/aws_credentials.local
+aws_credentials
+credentials.json
+*.pem
+*.key
+.aws/
+
+# Local Data Directory
+# Ignore all generated and bulk datasets, but preserve folder structure and the mock input file
+local_data/**
+!local_data/
+!local_data/**/
+!local_data/**/.gitkeep
+!local_data/raw/sample_input.csv
+
+# Docker, Database, and Runtime State
+postgres_data/
+logs/
+*/logs/
+.localstack/
+
+# Apache Airflow Runtime & Temporary Artifacts
+airflow.db
+/airflow.cfg
+!config/airflow.cfg
+webserver_config.py
+airflow-webserver.pid
+airflow-scheduler.pid
+airflow-worker.pid
+*.pid
+*.err
+*.out
+standalone_admin_password.txt
+unittests.cfg
+celerybeat-schedule
+celerybeat.pid
+.airflow/
+
+# Python, Bytecode, and Cache Directories
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.venv/
+env/
+venv/
+
+# PySpark, Delta Lake, and Hadoop Metastore Artifacts
+.spark-warehouse/
+metastore_db/
+derby.log
+*.parquet.crc
+*.csv.crc
+_delta_log/
+
+# Infrastructure as Code (Terraform / CDK / OpenTofu)
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+*.tfvars
+!*.example.tfvars
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+cdk.out/
+
+# IDE, Editor, and OS Cache Files
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/

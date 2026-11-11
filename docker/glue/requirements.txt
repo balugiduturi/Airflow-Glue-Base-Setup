@@ -1,0 +1,11 @@
+# Delta Lake integration for PySpark
+delta-spark==2.4.0
+
+# AWS SDK
+boto3>=1.34.0
+botocore>=1.34.0
+
+# Testing and PySpark DataFrame comparison
+pytest>=8.0.0
+chispa>=0.9.4
+
