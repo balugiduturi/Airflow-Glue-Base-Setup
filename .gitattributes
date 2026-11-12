@@ -1,0 +1,20 @@
+# ==============================================================================
+# Git Attributes: Enforce Linux LF line endings for Docker & Script Compatibility
+# ==============================================================================
+
+# Force Linux LF line endings on all shell scripts (prevents \r bash syntax errors)
+*.sh text eol=lf
+entrypoint.sh text eol=lf
+
+# Force LF on Dockerfiles and compose files
+Dockerfile text eol=lf
+*.dockerfile text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Force LF on Python and config files
+*.py text eol=lf
+*.cfg text eol=lf
+*.csv text eol=lf
+*.sql text eol=lf
+

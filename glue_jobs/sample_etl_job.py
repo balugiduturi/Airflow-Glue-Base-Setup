@@ -48,18 +48,15 @@ ORDER_SCHEMA = StructType([
 
 def get_spark_session(app_name: str = "SampleGlueETLJob") -> SparkSession:
     """
-    Initializes and returns a SparkSession configured with Delta Lake and S3A support.
+    Initializes and returns a SparkSession configured with Delta Lake and AWS S3A support.
+    Uses AWS DefaultAWSCredentialsProviderChain to authenticate via mounted ~/.aws or IAM roles.
     """
     builder = (
         SparkSession.builder.appName(app_name)
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
         .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
-        .config("spark.hadoop.fs.s3a.endpoint", "http://localstack:4566")
-        .config("spark.hadoop.fs.s3a.access.key", "mock_access_key")
-        .config("spark.hadoop.fs.s3a.secret.key", "mock_secret_key")
-        .config("spark.hadoop.fs.s3a.path.style.access", "true")
         .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-        .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
+        .config("spark.hadoop.fs.s3a.aws.credentials.provider", "com.amazonaws.auth.DefaultAWSCredentialsProviderChain")
         .config("spark.hadoop.fs.s3.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
     )
     return builder.getOrCreate()

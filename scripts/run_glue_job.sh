@@ -26,17 +26,15 @@ if [ -f "${PROJECT_ROOT}/.env" ]; then
     export $(grep -v '^#' "${PROJECT_ROOT}/.env" | xargs -0 2>/dev/null || grep -v '^#' "${PROJECT_ROOT}/.env" | xargs)
 fi
 
-AWS_ACCESS_KEY="${AWS_ACCESS_KEY_ID:-mock_access_key}"
-AWS_SECRET_KEY="${AWS_SECRET_ACCESS_KEY:-mock_secret_key}"
-AWS_REGION="${AWS_DEFAULT_REGION:-us-east-1}"
-LOCALSTACK_HOST="${LOCALSTACK_HOSTNAME:-localstack}"
-S3_ENDPOINT="http://${LOCALSTACK_HOST}:4566"
+AWS_PROFILE_NAME="${AWS_PROFILE:-giduturi-tutorial-profile}"
+AWS_REGION="${AWS_DEFAULT_REGION:-ap-south-1}"
 
 echo "============================================================"
 echo "[GLUE-RUNNER] Starting AWS Glue PySpark Job: ${JOB_NAME}"
 echo "============================================================"
 echo "Project Root:      ${PROJECT_ROOT}"
-echo "LocalStack S3:     ${S3_ENDPOINT}"
+echo "AWS Profile:       ${AWS_PROFILE_NAME}"
+echo "AWS Region:        ${AWS_REGION}"
 echo "Extra Arguments:   ${EXTRA_ARGS:-None}"
 echo "------------------------------------------------------------"
 
@@ -45,13 +43,8 @@ SPARK_SUBMIT_CMD="spark-submit \
     --packages io.delta:delta-core_2.12:2.4.0 \
     --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension \
     --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog \
-    --conf spark.hadoop.fs.s3a.endpoint=${S3_ENDPOINT} \
-    --conf spark.hadoop.fs.s3a.access.key=${AWS_ACCESS_KEY} \
-    --conf spark.hadoop.fs.s3a.secret.key=${AWS_SECRET_KEY} \
-    --conf spark.hadoop.fs.s3a.path.style.access=true \
     --conf spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem \
-    --conf spark.hadoop.fs.s3a.connection.ssl.enabled=false \
-    --conf spark.hadoop.fs.s3a.aws.credentials.provider=org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider \
+    --conf spark.hadoop.fs.s3a.aws.credentials.provider=com.amazonaws.auth.DefaultAWSCredentialsProviderChain \
     --conf spark.hadoop.fs.s3.impl=org.apache.hadoop.fs.s3a.S3AFileSystem \
     /home/glue_user/workspace/jupyter_workspace/${JOB_NAME} ${EXTRA_ARGS}"
 

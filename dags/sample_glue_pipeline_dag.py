@@ -1,8 +1,8 @@
 """
 Sample AWS Glue (PySpark) Pipeline DAG
 --------------------------------------
-Orchestrates an end-to-end data pipeline using LocalStack S3 and containerized AWS Glue:
-1. Verifies connectivity to LocalStack S3 and checks raw input data.
+Orchestrates an end-to-end data pipeline using Amazon S3 and containerized AWS Glue:
+1. Verifies connectivity to Amazon S3 and checks raw input data.
 2. Invokes the PySpark Glue ETL script using BashOperator.
 3. Verifies output Parquet files created in the processed S3 bucket.
 """
@@ -26,39 +26,30 @@ default_args = {
 }
 
 # Configuration retrieved from environment
-AWS_ENDPOINT_URL = os.environ.get("AWS_ENDPOINT_URL", "http://localstack:4566")
-AWS_REGION = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
-AWS_ACCESS_KEY = os.environ.get("AWS_ACCESS_KEY_ID", "mock_access_key")
-AWS_SECRET_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "mock_secret_key")
-S3_RAW_BUCKET = os.environ.get("S3_RAW_BUCKET", "raw-data-bucket")
-S3_PROCESSED_BUCKET = os.environ.get("S3_PROCESSED_BUCKET", "processed-data-bucket")
+AWS_REGION = os.environ.get("AWS_DEFAULT_REGION", "ap-south-1")
+S3_RAW_BUCKET = os.environ.get("S3_RAW_BUCKET", "your-actual-aws-s3-bucket-name")
+S3_PROCESSED_BUCKET = os.environ.get("S3_PROCESSED_BUCKET", "your-actual-aws-s3-bucket-name")
 
 
 def get_s3_client():
-    """Initializes a Boto3 S3 client targeted at LocalStack."""
-    return boto3.client(
-        "s3",
-        endpoint_url=AWS_ENDPOINT_URL,
-        region_name=AWS_REGION,
-        aws_access_key_id=AWS_ACCESS_KEY,
-        aws_secret_access_key=AWS_SECRET_KEY,
-    )
+    """Initializes a Boto3 S3 client using the active AWS environment session."""
+    session = boto3.Session(region_name=AWS_REGION)
+    return session.client("s3")
 
 
-def pre_check_localstack_s3(**kwargs):
+def pre_check_s3(**kwargs):
     """
-    Verifies LocalStack S3 connectivity and ensures raw input data is present.
+    Verifies Amazon S3 connectivity and ensures raw input data is present.
     """
     s3 = get_s3_client()
-    print(f"Connecting to LocalStack S3 at {AWS_ENDPOINT_URL}...")
+    print(f"Connecting to Amazon S3 in region {AWS_REGION}...")
 
-    # Verify bucket existence
-    response = s3.list_buckets()
-    bucket_names = [b["Name"] for b in response.get("Buckets", [])]
-    print(f"Available S3 Buckets: {bucket_names}")
-
-    if S3_RAW_BUCKET not in bucket_names:
-        raise ValueError(f"Required bucket '{S3_RAW_BUCKET}' does not exist in LocalStack.")
+    # Check S3 Bucket access
+    try:
+        s3.head_bucket(Bucket=S3_RAW_BUCKET)
+        print(f"S3 Bucket 's3://{S3_RAW_BUCKET}' is accessible.")
+    except Exception as e:
+        print(f"[WARN] Bucket check note: {e}")
 
     # Check for raw input file
     objects = s3.list_objects_v2(Bucket=S3_RAW_BUCKET, Prefix="raw/sample_input.csv")
@@ -67,7 +58,7 @@ def pre_check_localstack_s3(**kwargs):
         root_objs = s3.list_objects_v2(Bucket=S3_RAW_BUCKET)
         print("Bucket root contents:", [o["Key"] for o in root_objs.get("Contents", [])])
 
-    print("Pre-check successfully validated LocalStack S3 readiness.")
+    print("Pre-check successfully validated Amazon S3 readiness.")
 
 
 def post_verify_processed_data(**kwargs):
@@ -100,18 +91,18 @@ def post_verify_processed_data(**kwargs):
 with DAG(
     dag_id="sample_glue_pipeline_dag",
     default_args=default_args,
-    description="Production-grade pipeline orchestrating AWS Glue PySpark ETL on LocalStack S3",
+    description="Production-grade pipeline orchestrating AWS Glue PySpark ETL on Amazon S3",
     schedule_interval="@daily",
     start_date=datetime(2024, 1, 1),
     catchup=False,
     max_active_runs=1,
-    tags=["aws", "glue", "pyspark", "localstack", "ecommerce"],
+    tags=["aws", "glue", "pyspark", "s3", "ecommerce"],
 ) as dag:
 
     # Task 1: Healthcheck & Pre-requisite validation
     check_s3_prerequisites = PythonOperator(
-        task_id="check_localstack_s3_prerequisites",
-        python_callable=pre_check_localstack_s3,
+        task_id="check_s3_prerequisites",
+        python_callable=pre_check_s3,
     )
 
     # Task 2: BashOperator invoking the Glue PySpark ETL script
@@ -128,12 +119,8 @@ with DAG(
                     --packages io.delta:delta-core_2.12:2.4.0 \
                     --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension \
                     --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog \
-                    --conf spark.hadoop.fs.s3a.endpoint=http://localstack:4566 \
-                    --conf spark.hadoop.fs.s3a.access.key=mock_access_key \
-                    --conf spark.hadoop.fs.s3a.secret.key=mock_secret_key \
-                    --conf spark.hadoop.fs.s3a.path.style.access=true \
                     --conf spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem \
-                    --conf spark.hadoop.fs.s3a.connection.ssl.enabled=false \
+                    --conf spark.hadoop.fs.s3a.aws.credentials.provider=com.amazonaws.auth.DefaultAWSCredentialsProviderChain \
                     --conf spark.hadoop.fs.s3.impl=org.apache.hadoop.fs.s3a.S3AFileSystem \
                     /home/glue_user/workspace/jupyter_workspace/sample_etl_job.py
             else
@@ -152,4 +139,3 @@ with DAG(
     )
 
     check_s3_prerequisites >> trigger_glue_etl_job >> verify_processed_output
-

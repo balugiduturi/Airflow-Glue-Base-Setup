@@ -1,14 +1,12 @@
-version: '3.8'
-
 # ==============================================================================
-# AWS Data Engineering Local Development Platform Stack
+# AWS Data Engineering Local Development Platform Stack (Production-Grade)
 # Services:
-#   - postgres:         Airflow metadata database (v15-alpine)
-#   - localstack:       Local AWS cloud emulator (S3 service)
-#   - airflow-init:     Database migrations and initial admin user creation
-#   - airflow-webserver:Airflow UI dashboard (port 8080)
-#   - airflow-scheduler:Airflow workflow scheduler
-#   - glue-runner:      AWS Glue 4.0 PySpark container with Jupyter & Delta Lake
+#   - postgres:          Airflow metadata database (v15-alpine)
+#   - airflow-init:      System resource check, directory permission fix & DB migration
+#   - airflow-webserver: Airflow UI dashboard (port 8080)
+#   - airflow-scheduler: Airflow workflow scheduler engine
+#   - airflow-triggerer: Async triggerer for deferrable operators (S3, Glue sensors)
+#   - glue-runner:       AWS Glue 4.0 runtime (JupyterLab, Spark UI, History Server, Livy)
 # ==============================================================================
 
 x-airflow-common: &airflow-common
@@ -26,14 +24,15 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'false'
     AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth
     AIRFLOW_CONFIG: /opt/airflow/airflow.cfg
-    AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-mock_access_key}
-    AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-mock_secret_key}
-    AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
-    AWS_ENDPOINT_URL: http://localstack:4566
-    AWS_ENDPOINT_URL_S3: http://localstack:4566
-    S3_RAW_BUCKET: ${S3_RAW_BUCKET:-raw-data-bucket}
-    S3_PROCESSED_BUCKET: ${S3_PROCESSED_BUCKET:-processed-data-bucket}
-    S3_CURATED_BUCKET: ${S3_CURATED_BUCKET:-curated-data-bucket}
+    AWS_PROFILE: ${AWS_PROFILE:-giduturi-tutorial-profile}
+    AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-ap-south-1}
+    S3_RAW_BUCKET: ${S3_RAW_BUCKET:-your-actual-aws-s3-bucket-name}
+    S3_PROCESSED_BUCKET: ${S3_PROCESSED_BUCKET:-your-actual-aws-s3-bucket-name}
+    S3_CURATED_BUCKET: ${S3_CURATED_BUCKET:-your-actual-aws-s3-bucket-name}
+    GLUE_DATABASE_NAME: ${GLUE_DATABASE_NAME:-ecommerce_db}
+    GLUE_CRAWLER_NAME: ${GLUE_CRAWLER_NAME:-ecommerce_orders_crawler}
+    ATHENA_WORKGROUP: ${ATHENA_WORKGROUP:-primary}
+    ATHENA_OUTPUT_LOCATION: ${ATHENA_OUTPUT_LOCATION:-s3://${S3_PROCESSED_BUCKET:-your-actual-aws-s3-bucket-name}/athena_query_results/}
   volumes:
     - ./dags:/opt/airflow/dags
     - ./glue_jobs:/opt/airflow/glue_jobs
@@ -42,6 +41,7 @@ x-airflow-common: &airflow-common
     - ./scripts:/opt/airflow/scripts
     - ./logs:/opt/airflow/logs
     - /var/run/docker.sock:/var/run/docker.sock
+    - ~/.aws:/home/airflow/.aws:ro
   networks:
     - de-network
 
@@ -61,7 +61,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-airflow} -d ${POSTGRES_DB:-airflow}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-airflow} -d ${POSTGRES_DB:-airflow}" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -70,42 +70,31 @@ services:
     restart: unless-stopped
 
   # ----------------------------------------------------------------------------
-  # LocalStack: Local AWS Cloud Emulator (S3)
-  # ----------------------------------------------------------------------------
-  localstack:
-    image: localstack/localstack:latest
-    container_name: ${COMPOSE_PROJECT_NAME:-de_base_workspace}-localstack
-    ports:
-      - "${LOCALSTACK_PORT:-4566}:4566"
-    environment:
-      - SERVICES=s3
-      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
-      - DEBUG=0
-      - DOCKER_HOST=unix:///var/run/docker.sock
-    volumes:
-      - ./scripts/init_localstack_s3.sh:/etc/localstack/init/ready.d/init_s3.sh:ro
-      - ./local_data:/tmp/local_data:ro
-      - /var/run/docker.sock:/var/run/docker.sock
-    healthcheck:
-      test: ["CMD-SHELL", "awslocal s3 ls >/dev/null 2>&1 || exit 1"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    networks:
-      - de-network
-    restart: unless-stopped
-
-  # ----------------------------------------------------------------------------
-  # Airflow Init: Database Migrations & Initial Admin User Creation
+  # Airflow Init: Pre-flight checks, directory permissions & DB migrations
   # ----------------------------------------------------------------------------
   airflow-init:
     <<: *airflow-common
     container_name: ${COMPOSE_PROJECT_NAME:-de_base_workspace}-airflow-init
+    user: "0:0"
     entrypoint: /bin/bash
     command:
       - -c
       - |
+        one_meg=1048576
+        mem_available=$$(($$(getconf _PHYS_PAGES) * $$(getconf PAGE_SIZE) / one_meg))
+        cpus_available=$$(grep -cE 'cpu[0-9]+' /proc/stat)
+        if (( mem_available < 3000 )) ; then
+          echo -e "\033[1;33m[WARN] Less than 3GB memory available for Docker. Services may encounter OOM.\e[0m"
+        fi
+        if (( cpus_available < 2 )); then
+          echo -e "\033[1;33m[WARN] Less than 2 CPUs available for Docker.\e[0m"
+        fi
+        echo "[INIT] Creating shared directories and fixing permissions..."
+        mkdir -p /opt/airflow/{logs,dags,plugins,config}
+        chown -R "${AIRFLOW_UID:-50000}:0" /opt/airflow/{logs,dags,plugins,config} || true
+        echo "[INIT] Running Airflow database migrations..."
         airflow db migrate
+        echo "[INIT] Ensuring default admin user exists..."
         airflow users create \
           --username "${_AIRFLOW_WWW_USER_USERNAME:-airflow}" \
           --firstname "${_AIRFLOW_WWW_USER_FIRSTNAME:-Airflow}" \
@@ -113,6 +102,7 @@ services:
           --role Admin \
           --email "${_AIRFLOW_WWW_USER_EMAIL:-airflow@example.com}" \
           --password "${_AIRFLOW_WWW_USER_PASSWORD:-airflow}" || true
+        echo "[INIT] Airflow initialization completed successfully."
     depends_on:
       postgres:
         condition: service_healthy
@@ -127,15 +117,14 @@ services:
     ports:
       - "${AIRFLOW_PORT:-8080}:8080"
     healthcheck:
-      test: ["CMD-SHELL", "curl --fail http://localhost:8080/health || exit 1"]
-      interval: 10s
+      test: [ "CMD-SHELL", "curl --fail http://localhost:8080/health || exit 1" ]
+      interval: 15s
       timeout: 10s
-      retries: 5
+      retries: 10
+      start_period: 60s
     depends_on:
       airflow-init:
         condition: service_completed_successfully
-      localstack:
-        condition: service_healthy
     restart: unless-stopped
 
   # ----------------------------------------------------------------------------
@@ -146,19 +135,37 @@ services:
     container_name: ${COMPOSE_PROJECT_NAME:-de_base_workspace}-airflow-scheduler
     command: scheduler
     healthcheck:
-      test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname \"$${HOSTNAME}\""]
-      interval: 10s
+      test: [ "CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname \"$${HOSTNAME}\"" ]
+      interval: 15s
       timeout: 10s
-      retries: 5
+      retries: 10
+      start_period: 60s
     depends_on:
       airflow-init:
         condition: service_completed_successfully
-      localstack:
-        condition: service_healthy
     restart: unless-stopped
 
   # ----------------------------------------------------------------------------
-  # AWS Glue Runner: PySpark 3.3.0 & Glue 4.0 runtime with Jupyter Lab
+  # Airflow Triggerer: Async/Deferrable Operator Engine (S3/Glue Sensors)
+  # ----------------------------------------------------------------------------
+  airflow-triggerer:
+    <<: *airflow-common
+    container_name: ${COMPOSE_PROJECT_NAME:-de_base_workspace}-airflow-triggerer
+    command: triggerer
+    healthcheck:
+      test: [ "CMD-SHELL", 'airflow jobs check --job-type TriggererJob --hostname "$${HOSTNAME}"' ]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # ----------------------------------------------------------------------------
+  # AWS Glue Runner: PySpark 3.3.0 & Glue 4.0 runtime
+  # Ports: 8888 (JupyterLab), 4040 (Spark UI), 18080 (History Server), 8998 (Livy)
   # ----------------------------------------------------------------------------
   glue-runner:
     build:
@@ -167,22 +174,19 @@ services:
     container_name: ${COMPOSE_PROJECT_NAME:-de_base_workspace}-glue-runner
     environment:
       - DISABLE_SSL=true
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-mock_access_key}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-mock_secret_key}
-      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
-      - AWS_ENDPOINT_URL=http://localstack:4566
-      - AWS_ENDPOINT_URL_S3=http://localstack:4566
-      - LOCALSTACK_HOSTNAME=localstack
+      - DATALAKE_FORMATS=delta
+      - AWS_PROFILE=${AWS_PROFILE:-giduturi-tutorial-profile}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-ap-south-1}
     volumes:
       - ./glue_jobs:/home/glue_user/workspace/jupyter_workspace
       - ./local_data:/home/glue_user/workspace/data
       - ./tests:/home/glue_user/workspace/tests
+      - ~/.aws:/home/glue_user/.aws:ro
     ports:
       - "${GLUE_JUPYTER_PORT:-8888}:8888"
       - "${SPARK_UI_PORT:-4040}:4040"
-    depends_on:
-      localstack:
-        condition: service_healthy
+      - "${SPARK_HISTORY_PORT:-18080}:18080"
+      - "${LIVY_PORT:-8998}:8998"
     networks:
       - de-network
     restart: unless-stopped
@@ -195,4 +199,3 @@ networks:
   de-network:
     name: ${COMPOSE_PROJECT_NAME:-de_base_workspace}_network
     driver: bridge
-
